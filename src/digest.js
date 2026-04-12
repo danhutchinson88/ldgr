@@ -96,7 +96,6 @@ async function sendDigest() {
 
   console.log('[digest] sent to', process.env.EMAIL_TO);
   console.log('[digest] subject:', subject);
-  console.log('[digest] body:\n' + body);
 }
 
 module.exports = { sendDigest };

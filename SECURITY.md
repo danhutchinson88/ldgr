@@ -18,7 +18,7 @@ The web dashboard and all API endpoints (except `/privacy` and `/data-retention`
 
 - Financial data is stored only in `snapshot.json` on a Railway Volume
 - The `/snapshot` endpoint returns the full snapshot and is password-protected
-- No financial data is logged or written to standard output
+- Logs include the digest email subject line, which contains net worth and spending totals. Logs are only accessible to the account owner via the Railway deployment dashboard
 
 ## Responsible Disclosure
 
