@@ -1,0 +1,21 @@
+{
+  "targets": [
+    { "name": "US Stocks",             "target": 65, "threshold": 5 },
+    { "name": "International Stocks",  "target": 20, "threshold": 3 },
+    { "name": "Bonds",                 "target": 10, "threshold": 3 },
+    { "name": "Real Estate",           "target":  5, "threshold": 2 }
+  ],
+  "tickerMap": {
+    "FZROX":  "US Stocks",
+    "VOO":    "US Stocks",
+    "VYM":    "US Stocks",
+    "EBC":    "US Stocks",
+    "AMZN":   "US Stocks",
+    "GLDM":   "US Stocks",
+    "FZILX":  "International Stocks",
+    "FXNAX":  "Bonds",
+    "FSRNX":  "Real Estate",
+    "FDRXX":  "Cash",
+    "BTC":    "Crypto"
+  }
+}

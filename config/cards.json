@@ -1,0 +1,41 @@
+[
+  {
+    "name": "Amex Platinum",
+    "fee": 695,
+    "benefits": [
+      { "name": "Uber Cash", "value": 200, "used": 0, "period": "annual" },
+      { "name": "Airline Fee Credit", "value": 200, "used": 0, "period": "annual" },
+      { "name": "Hotel Credit (FHR/THC)", "value": 200, "used": 0, "period": "annual" },
+      { "name": "Saks Fifth Avenue", "value": 100, "used": 0, "period": "semi-annual" },
+      { "name": "Digital Entertainment Credit", "value": 240, "used": 0, "period": "annual" },
+      { "name": "Equinox Credit", "value": 300, "used": 0, "period": "annual" },
+      { "name": "Global Entry / TSA PreCheck", "value": 100, "used": 0, "period": "annual" },
+      { "name": "Clear Plus Credit", "value": 189, "used": 0, "period": "annual" }
+    ]
+  },
+  {
+    "name": "Amex Gold",
+    "fee": 325,
+    "benefits": [
+      { "name": "Dining Credit (GrubHub/Resy)", "value": 120, "used": 0, "period": "annual" },
+      { "name": "Uber Cash", "value": 120, "used": 0, "period": "annual" },
+      { "name": "Dunkin Credit", "value": 84, "used": 0, "period": "annual" },
+      { "name": "Resy Credit", "value": 100, "used": 0, "period": "annual" }
+    ]
+  },
+  {
+    "name": "Chase Sapphire Reserve",
+    "fee": 550,
+    "benefits": [
+      { "name": "Travel Credit", "value": 300, "used": 0, "period": "annual" },
+      { "name": "DoorDash DashPass Credit", "value": 60, "used": 0, "period": "annual" },
+      { "name": "Lyft Pink Credit", "value": 60, "used": 0, "period": "annual" },
+      { "name": "Global Entry / TSA PreCheck", "value": 100, "used": 0, "period": "annual" }
+    ]
+  },
+  {
+    "name": "Chase Freedom Unlimited",
+    "fee": 0,
+    "benefits": []
+  }
+]

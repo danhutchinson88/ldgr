@@ -1,0 +1,2 @@
+LDGR Privacy Policy
+LDGR is a personal finance tool that connects to financial institutions via Plaid to retrieve account balances and transaction data. All data is stored locally on infrastructure controlled solely by the account owner. No data is shared with third parties, sold, or used for advertising. LDGR does not collect data from any user other than the account owner.

@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LDGR</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #F4EFE6;
+    --surface:   #EDE7D9;
+    --card:      #FAF6EF;
+    --border:    #D5CCBA;
+    --ink:       #1A1812;
+    --ink-dim:   #635C4A;
+    --ink-faint: #A39882;
+    --green:     #285E38;
+    --red:       #7A1818;
+    --amber:     #7A5200;
+    --blue:      #1A3564;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--ink); line-height: 1.5; padding: 0 0 64px; }
+  .shell { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+  section + section { border-top: 1px solid var(--border); }
+  section { padding: 32px 0; }
+  .label { font-family: monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); display: block; margin-bottom: 6px; }
+  h2 { font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+  .h2-meta { font-family: 'DM Sans', sans-serif; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); margin-left: 8px; font-weight: 400; vertical-align: middle; }
+
+  /* ── Status strip ── */
+  .status-strip {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 7px 24px;
+    display: none;
+    align-items: center;
+    gap: 14px;
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+    flex-wrap: wrap;
+  }
+  .env-badge {
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 3px; font-weight: 500;
+  }
+  .env-badge.sandbox { background: #FBF0D9; color: var(--amber); border: 1px solid #E8D5AA; }
+  .env-badge.live    { background: #E6F0E9; color: var(--green); border: 1px solid #B8D9C0; }
+  .strip-sep { color: var(--border); }
+
+  /* ── Header ── */
+  #header { padding: 36px 0 28px; }
+  .wordmark   { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 400; letter-spacing: 0.04em; color: var(--ink-dim); }
+  .nw-big     { font-family: monospace; font-size: 40px; font-weight: 700; color: var(--ink); line-height: 1.1; margin-top: 6px; }
+  .nw-context { font-size: 13px; color: var(--ink-dim); margin-top: 5px; }
+  .nw-context .up   { color: var(--green); }
+  .nw-context .down { color: var(--red); }
+  .delta-row  { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .delta-badge { font-family: monospace; font-size: 11px; padding: 3px 8px; border-radius: 4px; background: var(--surface); border: 1px solid var(--border); }
+  .delta-badge .period { color: var(--ink-faint); margin-right: 4px; }
+  .delta-badge .val    { color: var(--ink); }
+  .delta-badge .val.pos { color: var(--green); }
+  .delta-badge .val.neg { color: var(--red); }
+  .delta-badge.dim .val { color: var(--ink-faint); }
+  .synced-at  { font-size: 11px; color: var(--ink-faint); margin-top: 10px; }
+
+  /* ── Net Worth ── */
+  .nw-meta { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 20px; }
+  .nw-stat .value { font-family: monospace; font-size: 14px; }
+  .nw-stat .value.pos { color: var(--green); }
+  .nw-stat .value.neg { color: var(--red); }
+
+  /* Sparkline */
+  .sparkline-wrap { background: var(--surface); border-radius: 6px; padding: 12px 12px 4px; width: 100%; display: none; }
+  .sparkline-labels { display: flex; justify-content: space-between; font-family: monospace; font-size: 9px; letter-spacing: 0.06em; color: var(--ink-faint); margin-top: 4px; padding: 0 2px; }
+  svg.sparkline { display: block; width: 100%; height: 60px; }
+
+  /* Projection — muted, footnote-weight */
+  .projection-row {
+    margin-top: 14px; padding: 12px 14px;
+    background: var(--surface); border-radius: 6px;
+    opacity: 0.65;
+  }
+  .projection-note { font-family: monospace; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 6px; }
+  .projection-caveat { font-size: 10px; color: var(--ink-faint); margin-top: 8px; font-style: italic; }
+  .proj-vals { display: flex; gap: 20px; flex-wrap: wrap; }
+  .proj-item { font-family: monospace; font-size: 12px; color: var(--ink-dim); }
+  .proj-item span { color: var(--ink-faint); font-size: 10px; display: block; }
+
+  /* ── Accounts ── */
+  .account-group { margin-bottom: 24px; }
+  .account-group:last-child { margin-bottom: 0; }
+  .account-group-label { font-family: monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 8px; }
+  .account-row { display: flex; justify-content: space-between; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; gap: 12px; }
+  .account-row:last-child { border-bottom: none; }
+  .account-name { color: var(--ink-dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .account-bal  { font-family: monospace; flex-shrink: 0; }
+  .account-bal.neg { color: var(--red); }
+  .group-total { display: flex; justify-content: space-between; padding: 7px 0 0; font-size: 12px; color: var(--ink-faint); font-family: monospace; border-top: 1px solid var(--border); margin-top: 1px; }
+
+  /* ── Cash Flow ── */
+  .cashflow-stats { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 20px; }
+  .cashflow-stat .value { font-family: monospace; font-size: 20px; font-weight: 700; }
+  .cashflow-stat .value.income  { color: var(--green); }
+  .cashflow-stat .value.neutral { color: var(--ink); }
+  .cashflow-stat .value.pos { color: var(--green); }
+  .cashflow-stat .value.neg { color: var(--red); }
+  .cashflow-stat .sub { font-family: monospace; font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
+  .savings-bar-wrap { margin-top: 4px; }
+  .savings-bar-label { display: flex; justify-content: space-between; font-family: monospace; font-size: 11px; color: var(--ink-faint); margin-bottom: 4px; }
+  .savings-bar-track { background: var(--surface); border-radius: 4px; height: 8px; overflow: hidden; }
+  .savings-bar-fill  { height: 100%; border-radius: 4px; background: var(--green); }
+  .cashflow-footnote { font-size: 11px; color: var(--ink-faint); margin-top: 12px; line-height: 1.5; font-style: italic; padding-top: 12px; border-top: 1px solid var(--border); }
+  .income-monthly { margin-top: 20px; }
+  .income-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; gap: 8px; }
+  .income-row:last-child { border-bottom: none; }
+  .income-month { color: var(--ink-dim); font-family: monospace; font-size: 12px; }
+  .income-amt   { font-family: monospace; color: var(--green); flex-shrink: 0; }
+  .income-unverified { font-family: monospace; font-size: 10px; color: var(--ink-faint); flex-shrink: 0; }
+
+  /* ── Spending / Budget ── */
+  .spend-header { margin-bottom: 20px; }
+  .week-total  { font-family: monospace; font-size: 28px; font-weight: 700; }
+  .week-period { font-family: monospace; font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
+  .mtd-label   { font-family: monospace; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 10px; }
+  .budget-row  { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .budget-row:last-child { border-bottom: none; }
+  .budget-rank { font-family: monospace; font-size: 10px; color: var(--ink-faint); width: 14px; text-align: right; flex-shrink: 0; }
+  .budget-cat  { width: 152px; color: var(--ink-dim); flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .budget-bar-wrap { flex: 1; background: var(--surface); border-radius: 3px; height: 6px; overflow: hidden; min-width: 30px; }
+  .budget-bar  { height: 100%; border-radius: 3px; }
+  .budget-bar.ok   { background: var(--blue); }
+  .budget-bar.over { background: var(--red); }
+  .budget-amts { font-family: monospace; text-align: right; min-width: 80px; flex-shrink: 0; }
+  .budget-amts .actual { color: var(--ink); }
+  .budget-amts .actual.over { color: var(--red); }
+  .budget-amts .target { color: var(--ink-faint); font-size: 10px; display: block; }
+
+  /* ── Portfolio ── */
+  .portfolio-total { font-family: monospace; font-size: 24px; font-weight: 700; margin-bottom: 20px; }
+  .holdings-table { width: 100%; border-collapse: collapse; }
+  .holdings-table th { font-family: monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); text-align: left; padding: 0 0 8px; border-bottom: 1px solid var(--border); }
+  .holdings-table th.r { text-align: right; }
+  .holdings-table td { font-size: 12px; padding: 7px 0; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .holdings-table tr:last-child td { border-bottom: none; }
+  .holdings-table td.r { text-align: right; font-family: monospace; }
+  .h-ticker { font-family: monospace; font-weight: 500; }
+  .h-name   { font-size: 11px; color: var(--ink-faint); display: block; }
+  .h-class  { font-family: monospace; font-size: 9px; letter-spacing: 0.06em; padding: 2px 5px; border-radius: 3px; background: var(--surface); color: var(--ink-dim); }
+
+  /* ── Allocations ── */
+  .alloc-stacked-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; margin-bottom: 12px; }
+  .alloc-stacked-bar .seg { height: 100%; }
+  .alloc-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+  .alloc-legend-item { display: flex; align-items: center; gap: 5px; font-family: monospace; font-size: 10px; color: var(--ink-dim); }
+  .alloc-legend-dot  { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+  .alloc-row  { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .alloc-row:last-child { border-bottom: none; }
+  .alloc-name { width: 160px; color: var(--ink-dim); flex-shrink: 0; }
+  .alloc-pcts { font-family: monospace; font-size: 12px; color: var(--ink-faint); width: 90px; flex-shrink: 0; }
+  .alloc-bar-wrap { flex: 1; background: var(--surface); border-radius: 3px; height: 6px; overflow: hidden; }
+  .alloc-bar   { height: 100%; border-radius: 3px; }
+  .alloc-bar.ok  { background: var(--green); }
+  .alloc-bar.off { background: var(--amber); }
+  .alloc-rebalance { font-family: monospace; font-size: 11px; text-align: right; min-width: 80px; flex-shrink: 0; }
+  .alloc-rebalance.sell { color: var(--red); }
+  .alloc-rebalance.buy  { color: var(--green); }
+  .alloc-badge { font-family: monospace; font-size: 9px; letter-spacing: 0.08em; padding: 2px 6px; border-radius: 3px; flex-shrink: 0; }
+  .alloc-badge.ok  { background: #E6F0E9; color: var(--green); }
+  .alloc-badge.off { background: #F5EDD9; color: var(--amber); }
+
+  /* ── Card Benefits ── */
+  .card-block { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+  .card-block:last-child { margin-bottom: 0; }
+  .card-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; flex-wrap: wrap; gap: 6px; }
+  .card-name   { font-family: 'Playfair Display', serif; font-size: 15px; font-weight: 700; }
+  .card-meta   { font-family: monospace; font-size: 11px; color: var(--ink-faint); }
+  .benefit-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 12px; gap: 8px; }
+  .benefit-row:last-child { border-bottom: none; }
+  .benefit-name { color: var(--ink-dim); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .benefit-vals { font-family: monospace; color: var(--ink-faint); text-align: right; white-space: nowrap; flex-shrink: 0; }
+  .benefit-vals .remaining { color: var(--ink); }
+  .benefit-vals .remaining.flagged { color: var(--amber); font-weight: 500; }
+  .benefit-period { font-family: monospace; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); margin-left: 6px; }
+  .card-total { display: flex; justify-content: space-between; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); font-family: monospace; font-size: 11px; color: var(--ink-faint); }
+  .card-total .unc { color: var(--amber); }
+  .card-tracking-note { font-size: 10px; color: var(--ink-faint); margin-top: 8px; font-style: italic; }
+
+  /* ── Empty states ── */
+  .empty-state { padding: 16px 0 4px; color: var(--ink-faint); font-size: 13px; line-height: 1.5; }
+
+  /* ── Loading / error ── */
+  #loading, #error { padding: 80px 0; text-align: center; color: var(--ink-faint); font-size: 14px; }
+  #content { display: none; }
+
+  /* ── Mobile ── */
+  @media (max-width: 500px) {
+    .shell { padding: 0 16px; }
+    .status-strip { padding: 7px 16px; }
+    .nw-big { font-size: 32px; }
+    .budget-cat { width: 110px; font-size: 11px; }
+    .budget-amts { min-width: 64px; font-size: 11px; }
+    .alloc-name { width: auto; font-size: 12px; }
+    .alloc-pcts { width: auto; font-size: 11px; }
+    .alloc-bar-wrap { display: none; }
+    .alloc-rebalance { min-width: 60px; font-size: 10px; }
+    .alloc-row { flex-wrap: wrap; gap: 4px; }
+    .holdings-table { font-size: 11px; }
+    .holdings-table th, .holdings-table td { padding: 5px 2px; }
+    .cashflow-stats { gap: 16px; }
+    .card-header { flex-direction: column; }
+    .proj-vals { gap: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="status-strip" id="status-strip">
+  <span id="status-env" class="env-badge"></span>
+  <span class="strip-sep">|</span>
+  <span id="status-sync"></span>
+  <span class="strip-sep">|</span>
+  <span id="status-inst"></span>
+</div>
+
+<div class="shell">
+  <div id="loading">Loading…</div>
+  <div id="error" style="display:none"></div>
+  <div id="content">
+
+    <div id="header">
+      <div class="wordmark">LDGR</div>
+      <div class="nw-big" id="hdr-nw"></div>
+      <div class="nw-context" id="hdr-context"></div>
+      <div class="delta-row" id="hdr-deltas"></div>
+      <div class="synced-at" id="hdr-synced"></div>
+    </div>
+
+    <section>
+      <h2>Net Worth</h2>
+      <div class="nw-meta" id="nw-meta"></div>
+      <div class="sparkline-wrap" id="sparkline-wrap">
+        <svg class="sparkline" id="sparkline" viewBox="0 0 400 60" preserveAspectRatio="none"></svg>
+        <div class="sparkline-labels" id="sparkline-labels"></div>
+      </div>
+      <div class="projection-row" id="projection-row" style="display:none">
+        <div class="projection-note">Linear projection &nbsp;<span style="font-style:italic;text-transform:none;letter-spacing:0;font-size:10px">illustrative, not a forecast</span></div>
+        <div class="proj-vals" id="proj-vals"></div>
+        <div class="projection-caveat" id="proj-caveat"></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Accounts</h2>
+      <div id="accounts-groups"></div>
+    </section>
+
+    <section>
+      <h2>Cash Flow</h2>
+      <div class="cashflow-stats" id="cashflow-stats"></div>
+      <div id="cashflow-savings-bar"></div>
+      <div class="income-monthly" id="income-monthly"></div>
+      <div class="cashflow-footnote" id="cashflow-footnote" style="display:none">
+        Income is detected automatically from Plaid: verified payroll and direct deposits are marked confirmed; external transfers that Plaid didn't classify as income are marked unverified. Self-transfers between your own accounts are excluded. Spending is all outbound transactions in the last 30 days.
+      </div>
+    </section>
+
+    <section>
+      <h2>Spending</h2>
+      <div class="spend-header">
+        <div class="week-total" id="week-total"></div>
+        <div class="week-period">past 7 days</div>
+      </div>
+      <div class="mtd-label" id="mtd-label"></div>
+      <div id="budget-rows"></div>
+    </section>
+
+    <section>
+      <h2>Portfolio</h2>
+      <div class="portfolio-total" id="portfolio-total"></div>
+      <div id="holdings-table-wrap"></div>
+    </section>
+
+    <section>
+      <h2>Allocations <span class="h2-meta">targets</span></h2>
+      <div id="alloc-stacked-wrap"></div>
+      <div id="allocations"></div>
+    </section>
+
+    <section>
+      <h2>Card Benefits <span class="h2-meta">manual tracking</span></h2>
+      <div id="cards"></div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+const fmt = (n, sign = false) => {
+  const abs = Math.round(Math.abs(n)).toLocaleString('en-US');
+  return (sign ? (n >= 0 ? '+$' : '-$') : '$') + abs;
+};
+const pct = n => (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
+
+function historyAt(history, daysAgo) {
+  const target = new Date(Date.now() - daysAgo * 86400000).toISOString().split('T')[0];
+  return history.filter(h => h.date && h.date <= target).pop() || null;
+}
+
+function renderSparkline(history) {
+  if (!history || history.length < 2) return;
+  const values = history.map(h => h.value);
+  const min = Math.min(...values), max = Math.max(...values);
+  const W = 400, H = 60, pad = 6;
+  const x = i => pad + (i / (values.length - 1)) * (W - pad * 2);
+  const y = v => max === min ? H / 2 : H - pad - ((v - min) / (max - min)) * (H - pad * 2);
+  const pts  = values.map((v, i) => x(i) + ',' + y(v)).join(' ');
+  const area = x(0) + ',' + H + ' ' + pts + ' ' + x(values.length - 1) + ',' + H;
+  $('sparkline').innerHTML =
+    '<defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0%" stop-color="#1A3564" stop-opacity="0.15"/>' +
+    '<stop offset="100%" stop-color="#1A3564" stop-opacity="0"/>' +
+    '</linearGradient></defs>' +
+    '<polygon points="' + area + '" fill="url(#sg)"/>' +
+    '<polyline points="' + pts + '" fill="none" stroke="#1A3564" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>';
+  const first = history[0], mid = history[Math.floor((history.length - 1) / 2)], last = history[history.length - 1];
+  $('sparkline-labels').innerHTML =
+    '<span>' + first.label + '</span>' +
+    (history.length > 4 ? '<span>' + mid.label + '</span>' : '<span></span>') +
+    '<span>' + last.label + '</span>';
+  $('sparkline-wrap').style.display = 'block';
+}
+
+function renderDeltas(current, history) {
+  const periods = [{ label: 'WoW', days: 7 }, { label: 'MoM', days: 30 }, { label: 'YoY', days: 365 }];
+  const resolved = periods.map(p => ({ ...p, entry: historyAt(history, p.days) }));
+  return resolved.map(({ label, entry }, i) => {
+    // No anchor found
+    if (!entry) return '<span class="delta-badge dim"><span class="period">' + label + '</span><span class="val">—</span></span>';
+    // Duplicate anchor — finer-grained period already used this entry
+    const isDupe = resolved.slice(0, i).some(prev => prev.entry && prev.entry.date === entry.date);
+    if (isDupe) return '<span class="delta-badge dim"><span class="period">' + label + '</span><span class="val">—</span></span>';
+    const d = current - entry.value, p = entry.value !== 0 ? (d / entry.value) * 100 : 0;
+    return '<span class="delta-badge"><span class="period">' + label + '</span>' +
+           '<span class="val ' + (d >= 0 ? 'pos' : 'neg') + '">' + fmt(d, true) + ' (' + pct(p) + ')</span></span>';
+  }).join('');
+}
+
+function renderContext(current, history) {
+  const wow = historyAt(history, 7);
+  if (!wow) { $('hdr-context').textContent = ''; return; }
+  const d = current - wow.value;
+  const p = wow.value !== 0 ? Math.abs((d / wow.value) * 100).toFixed(1) : '0.0';
+  $('hdr-context').innerHTML =
+    '<span class="' + (d >= 0 ? 'up' : 'down') + '">' + (d >= 0 ? '▲' : '▼') + ' ' + fmt(Math.abs(d)) + ' (' + p + '%)</span> from last week';
+}
+
+function renderProjection(current, velocity, historyLen) {
+  if (!velocity) return;
+  const milestones = [250000, 500000, 750000, 1000000].filter(m => m > current);
+  const items = milestones.slice(0, 3).map(m => {
+    const weeks = (m - current) / velocity;
+    const yr    = new Date(Date.now() + weeks * 7 * 86400000).getFullYear();
+    return '<div class="proj-item">' + fmt(m) + '<span>~' + yr + '</span></div>';
+  });
+  const oneYr  = Math.round(current + velocity * 52);
+  const fiveYr = Math.round(current + velocity * 260);
+  items.unshift(
+    '<div class="proj-item">' + fmt(oneYr)  + '<span>1 year</span></div>',
+    '<div class="proj-item">' + fmt(fiveYr) + '<span>5 years</span></div>',
+  );
+  $('proj-vals').innerHTML = items.join('');
+  $('proj-caveat').textContent = 'Based on ' + historyLen + ' data point' + (historyLen !== 1 ? 's' : '') + '. Accuracy improves as weekly syncs accumulate.';
+  $('projection-row').style.display = 'block';
+}
+
+function groupAccounts(accounts) {
+  const groups = { Investments: [], Cash: [], 'Credit Cards': [], Loans: [] };
+  for (const a of accounts) {
+    const t = (a.type || '').toLowerCase(), s = (a.subtype || '').toLowerCase();
+    if (['investment','brokerage'].includes(t) || ['401k','roth','hsa','roth ira','brokeragelink'].includes(s))
+      groups.Investments.push(a);
+    else if (t === 'credit' || s === 'credit card')
+      groups['Credit Cards'].push(a);
+    else if (s === 'student' || s === 'loan')
+      groups.Loans.push(a);
+    else
+      groups.Cash.push(a);
+  }
+  return groups;
+}
+
+// Asset class colors — mirrors config/portfolio.json
+const CLASS_COLORS = {
+  'US Stocks':            '#1A3564',
+  'International Stocks': '#2A6B5E',
+  'Bonds':                '#7A5200',
+  'Real Estate':          '#5E2A5A',
+  'Cash':                 '#285E38',
+  'Crypto':               '#6B3A2A',
+  'Other':                '#A39882',
+};
+
+// Ticker → asset class — mirrors config/portfolio.json tickerMap
+const TICKER_MAP = {
+  FZROX:'US Stocks', VOO:'US Stocks', VYM:'US Stocks', EBC:'US Stocks', AMZN:'US Stocks', GLDM:'US Stocks',
+  FZILX:'International Stocks', FXNAX:'Bonds', FSRNX:'Real Estate', FDRXX:'Cash', BTC:'Crypto',
+};
+
+function renderAllocStacked(allocations) {
+  const nonzero = (allocations || []).filter(a => a.actual > 0);
+  if (!nonzero.length) { $('alloc-stacked-wrap').innerHTML = ''; return; }
+  const segs   = nonzero.map(a =>
+    '<div class="seg" style="width:' + a.actual + '%;background:' + (CLASS_COLORS[a.name] || CLASS_COLORS.Other) + '" title="' + a.name + ' ' + a.actual + '%"></div>'
+  ).join('');
+  const legend = nonzero.map(a =>
+    '<div class="alloc-legend-item"><div class="alloc-legend-dot" style="background:' + (CLASS_COLORS[a.name] || CLASS_COLORS.Other) + '"></div>' + a.name + ' ' + a.actual + '%</div>'
+  ).join('');
+  $('alloc-stacked-wrap').innerHTML =
+    '<div class="alloc-stacked-bar">' + segs + '</div>' +
+    '<div class="alloc-legend">' + legend + '</div>';
+}
+
+function render(data) {
+  const { syncedAt, plaidEnv, netWorth, accounts, transactions, holdings, weekly, monthlySpend, spend30d, income, budget, cards, allocations } = data;
+  const history   = netWorth.history || [];
+  const current   = netWorth.current;
+  const velocity  = netWorth.velocity;
+  const isSandbox = (plaidEnv || 'sandbox') !== 'production';
+
+  // ── Status strip ──
+  $('status-env').textContent = isSandbox ? 'Sandbox' : 'Live';
+  $('status-env').className   = 'env-badge ' + (isSandbox ? 'sandbox' : 'live');
+  $('status-sync').textContent = 'Last sync ' + new Date(syncedAt).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  const instCount = [...new Set((accounts || []).map(a => a.institution))].length;
+  $('status-inst').textContent = instCount + ' institution' + (instCount !== 1 ? 's' : '');
+  $('status-strip').style.display = 'flex';
+
+  // ── Header ──
+  $('hdr-nw').textContent = fmt(current);
+  if (!isSandbox) {
+    renderContext(current, history);
+    $('hdr-deltas').innerHTML = renderDeltas(current, history);
+  } else {
+    $('hdr-context').textContent = '';
+    $('hdr-deltas').innerHTML = '<span style="font-family:monospace;font-size:11px;color:var(--ink-faint)">Trend comparisons unavailable in Sandbox</span>';
+  }
+  $('hdr-synced').textContent = 'Updated ' + new Date(syncedAt).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+
+  // ── Net Worth ──
+  let metaHTML = '';
+  if (!isSandbox) {
+    const firstEntry = history.find(h => h.date) || history[0];
+    if (firstEntry) {
+      const allTimeChange = current - firstEntry.value;
+      metaHTML += '<div class="nw-stat"><span class="label">All-time change</span><span class="value ' + (allTimeChange >= 0 ? 'pos' : 'neg') + '">' + fmt(allTimeChange, true) + '</span></div>';
+      metaHTML += '<div class="nw-stat"><span class="label">Since</span><span class="value">' + firstEntry.label + '</span></div>';
+    }
+    if (velocity !== null && velocity !== undefined) {
+      metaHTML += '<div class="nw-stat"><span class="label">Avg weekly growth</span><span class="value ' + (velocity >= 0 ? 'pos' : 'neg') + '">' + fmt(velocity, true) + '/wk</span></div>';
+    }
+  }
+  $('nw-meta').innerHTML = metaHTML;
+  renderSparkline(history);
+  // Only project in production with positive velocity and enough history
+  if (!isSandbox && velocity > 0 && history.length >= 4) {
+    renderProjection(current, velocity, history.length);
+  }
+
+  // ── Accounts ──
+  const groups  = groupAccounts(accounts);
+  const groupEl = $('accounts-groups');
+  groupEl.innerHTML = '';
+  let hasAccounts = false;
+  for (const [gName, accts] of Object.entries(groups)) {
+    if (!accts.length) continue;
+    hasAccounts = true;
+    const isLiab = gName === 'Credit Cards' || gName === 'Loans';
+    const total  = accts.reduce((s, a) => s + a.balance, 0);
+    const div    = document.createElement('div');
+    div.className = 'account-group';
+    div.innerHTML =
+      '<div class="account-group-label">' + gName + '</div>' +
+      accts.map(a =>
+        '<div class="account-row"><span class="account-name">' + a.name + '</span>' +
+        '<span class="account-bal' + (isLiab ? ' neg' : '') + '">' + (isLiab ? '−' : '') + fmt(a.balance) + '</span></div>'
+      ).join('') +
+      '<div class="group-total"><span>Total</span><span>' + (isLiab ? '−' : '') + fmt(total) + '</span></div>';
+    groupEl.appendChild(div);
+  }
+  if (!hasAccounts) {
+    groupEl.innerHTML = '<div class="empty-state">No account data yet. Run a sync to connect your institutions.</div>';
+  }
+
+  // ── Cash Flow ──
+  const inc30   = income?.last30d || 0;
+  const incYtd  = income?.ytd     || 0;
+  const spend30 = spend30d || 0;
+  const surplus = inc30 - spend30;
+  const sRate   = inc30 > 0 ? ((surplus / inc30) * 100) : null;
+
+  if (inc30 > 0 || spend30 > 0) {
+    $('cashflow-stats').innerHTML =
+      '<div class="cashflow-stat"><span class="label">Income (30d)</span><div class="value income">' + fmt(inc30) + '</div>' +
+      (incYtd > 0 ? '<div class="sub">' + fmt(incYtd) + ' YTD</div>' : '') + '</div>' +
+      '<div class="cashflow-stat"><span class="label">Spending (30d)</span><div class="value neutral">' + fmt(spend30) + '</div></div>' +
+      '<div class="cashflow-stat"><span class="label">Surplus</span><div class="value ' + (surplus >= 0 ? 'pos' : 'neg') + '">' + fmt(surplus, true) + '</div></div>';
+    if (sRate !== null) {
+      $('cashflow-savings-bar').innerHTML =
+        '<div class="savings-bar-wrap">' +
+        '<div class="savings-bar-label"><span>Savings rate</span><span>' + sRate.toFixed(1) + '%</span></div>' +
+        '<div class="savings-bar-track"><div class="savings-bar-fill" style="width:' + Math.max(0, Math.min(100, sRate)) + '%"></div></div></div>';
+    }
+    $('cashflow-footnote').style.display = 'block';
+  } else {
+    $('cashflow-stats').innerHTML = '<div class="empty-state">No income or spending detected yet. This section populates automatically once your institutions are connected with real data.</div>';
+  }
+
+  const monthly = income?.monthly || [];
+  if (monthly.length > 0) {
+    $('income-monthly').innerHTML =
+      '<div style="font-family:monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:8px">Monthly income</div>' +
+      monthly.slice().reverse().slice(0, 6).map(m => {
+        const lbl = new Date(m.month + '-15').toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+        return '<div class="income-row">' +
+          '<span class="income-month">' + lbl + '</span>' +
+          '<span class="income-amt">' + fmt(m.gross) + '</span>' +
+          (m.unverified > 0 ? '<span class="income-unverified">' + fmt(m.unverified) + ' unverified</span>' : '') +
+          '</div>';
+      }).join('');
+  }
+
+  // ── Spending / Budget ──
+  $('week-total').textContent = fmt(weekly?.totalSpend || 0);
+  const byCat  = monthlySpend || {};
+  const budgetTargets = budget || {};
+  const allCats = [...new Set([...Object.keys(byCat), ...Object.keys(budgetTargets).filter(k => !k.startsWith('_'))])];
+  allCats.sort((a, b) => (byCat[b] || 0) - (byCat[a] || 0));
+  if (allCats.length > 0) {
+    const monthName = new Date().toLocaleDateString('en-US', { month: 'long' });
+    $('mtd-label').textContent = monthName + ' — month-to-date vs budget';
+    let rank = 0;
+    $('budget-rows').innerHTML = allCats.map(cat => {
+      const actual  = byCat[cat] || 0;
+      const target  = budgetTargets[cat] || 0;
+      const over    = target > 0 && actual > target;
+      const barPct  = target > 0 ? Math.min((actual / target) * 100, 100) : (actual > 0 ? 100 : 0);
+      if (actual > 0) rank++;
+      return '<div class="budget-row">' +
+        '<span class="budget-rank">' + (actual > 0 ? rank : '') + '</span>' +
+        '<span class="budget-cat">' + cat + '</span>' +
+        '<div class="budget-bar-wrap"><div class="budget-bar ' + (over ? 'over' : 'ok') + '" style="width:' + barPct + '%"></div></div>' +
+        '<div class="budget-amts"><span class="actual' + (over ? ' over' : '') + '">' + fmt(actual) + '</span>' +
+        (target > 0 ? '<span class="target">of ' + fmt(target) + '</span>' : '') + '</div></div>';
+    }).join('');
+  } else {
+    $('mtd-label').textContent = '';
+    $('budget-rows').innerHTML = '<div class="empty-state">No spending data this month yet.</div>';
+  }
+
+  // ── Portfolio ──
+  const hold = (holdings || []).slice().sort((a, b) => b.value - a.value);
+  const portfolioTotal = hold.reduce((s, h) => s + h.value, 0);
+  $('portfolio-total').textContent = portfolioTotal > 0 ? fmt(portfolioTotal) : '';
+  if (hold.length > 0) {
+    $('holdings-table-wrap').innerHTML =
+      '<table class="holdings-table"><thead><tr>' +
+      '<th>Ticker</th><th>Shares</th><th class="r">Price</th><th class="r">Value</th><th class="r">% / Class</th>' +
+      '</tr></thead><tbody>' +
+      hold.map(h => {
+        const cls     = TICKER_MAP[h.ticker] || 'Other';
+        const portPct = portfolioTotal > 0 ? ((h.value / portfolioTotal) * 100).toFixed(1) : '0.0';
+        return '<tr><td><span class="h-ticker">' + h.ticker + '</span><span class="h-name">' + (h.name || '') + '</span></td>' +
+          '<td>' + (h.shares < 10 ? h.shares.toFixed(3) : Math.round(h.shares).toLocaleString()) + '</td>' +
+          '<td class="r">$' + (h.price || 0).toFixed(2) + '</td>' +
+          '<td class="r">' + fmt(h.value) + '</td>' +
+          '<td class="r"><span class="h-class">' + portPct + '% ' + cls + '</span></td></tr>';
+      }).join('') + '</tbody></table>';
+  } else {
+    $('holdings-table-wrap').innerHTML = '<div class="empty-state">No holdings data yet. Investment holdings from Fidelity will appear here after the next sync.</div>';
+  }
+
+  // ── Allocations ──
+  const hasAlloc = allocations && allocations.length > 0 && allocations.some(a => a.actual > 0);
+  renderAllocStacked(hasAlloc ? allocations : []);
+  if (!hasAlloc) {
+    $('allocations').innerHTML = '<div class="empty-state">Allocation data will populate once holdings are synced. Targets are configured in config/portfolio.json.</div>';
+  } else {
+    $('allocations').innerHTML = allocations.map(a => {
+      const rebalStr = a.rebalance !== undefined
+        ? '<span class="alloc-rebalance ' + (a.rebalance < 0 ? 'buy' : 'sell') + '">' +
+          (a.rebalance < 0 ? 'Buy ' : 'Sell ') + fmt(Math.abs(a.rebalance)) + '</span>'
+        : '<span class="alloc-rebalance"></span>';
+      return '<div class="alloc-row">' +
+        '<span class="alloc-name">' + a.name + '</span>' +
+        '<span class="alloc-pcts">' + a.actual + '% <span style="color:var(--border)">/ ' + a.target + '%</span></span>' +
+        '<div class="alloc-bar-wrap"><div class="alloc-bar ' + (a.withinThreshold ? 'ok' : 'off') + '" style="width:' + Math.min(a.actual, 100) + '%"></div></div>' +
+        rebalStr +
+        '<span class="alloc-badge ' + (a.withinThreshold ? 'ok' : 'off') + '">' + (a.withinThreshold ? 'ON TARGET' : 'OFF') + '</span></div>';
+    }).join('');
+  }
+
+  // ── Card Benefits ──
+  if (!cards || cards.length === 0) {
+    $('cards').innerHTML = '<div class="empty-state">No cards configured. Add your cards to config/cards.json to start tracking annual credits.</div>';
+    return;
+  }
+  $('cards').innerHTML = cards.map(card => {
+    let unclaimed = 0;
+    const rows = (card.benefits || []).map(b => {
+      const remaining = b.value - (b.used || 0);
+      if (remaining > 0) unclaimed += remaining;
+      const flagged = b.value > 0 && (b.used || 0) / b.value < 0.5;
+      return '<div class="benefit-row">' +
+        '<span class="benefit-name">' + b.name + '<span class="benefit-period">' + (b.period || '') + '</span></span>' +
+        '<span class="benefit-vals">' + fmt(b.used || 0) + ' used · <span class="remaining' + (flagged ? ' flagged' : '') + '">' + fmt(remaining) + ' left</span></span>' +
+        '</div>';
+    }).join('');
+    return '<div class="card-block">' +
+      '<div class="card-header"><span class="card-name">' + card.name + '</span>' +
+      '<span class="card-meta">' + (card.fee > 0 ? fmt(card.fee) + ' annual fee' : 'no annual fee') + '</span></div>' +
+      (rows || '<div class="empty-state" style="padding:8px 0 0">No benefits tracked.</div>') +
+      (unclaimed > 0 ? '<div class="card-total"><span>Unclaimed credits</span><span class="unc">' + fmt(unclaimed) + '</span></div>' : '') +
+      '<div class="card-tracking-note">Update used amounts in config/cards.json as you redeem benefits.</div>' +
+      '</div>';
+  }).join('');
+}
+
+fetch('/snapshot', { credentials: 'same-origin' })
+  .then(r => r.json())
+  .then(data => {
+    $('loading').style.display = 'none';
+    if (data.status === 'no data yet') {
+      $('error').style.display = 'block';
+      $('error').textContent = 'No sync data yet. Run a sync first.';
+      return;
+    }
+    $('content').style.display = 'block';
+    render(data);
+  })
+  .catch(err => {
+    $('loading').style.display = 'none';
+    $('error').style.display = 'block';
+    $('error').textContent = 'Failed to load snapshot: ' + err.message;
+  });
+</script>
+</body>
+</html>
