@@ -2,7 +2,7 @@
 // Pushes the local snapshot (including backloaded history) to the Railway instance.
 // Run after backload.js to seed Railway with historical NW data.
 //
-// Usage: LEDGER_URL=https://your-app.up.railway.app LEDGER_PASS=yourpass node scripts/push-snapshot.js
+// Usage: LDGR_URL=https://your-app.up.railway.app LEDGER_PASS=yourpass node scripts/push-snapshot.js
 
 'use strict';
 require('dotenv').config();
@@ -12,11 +12,11 @@ const https = require('https');
 const http  = require('http');
 
 const snapshotPath = process.env.SNAPSHOT_PATH || path.join(__dirname, '..', 'data', 'snapshot.json');
-const url  = process.env.LEDGER_URL;
+const url  = process.env.LDGR_URL;
 const pass = process.env.LEDGER_PASS || process.env.DASHBOARD_PASSWORD;
 
 if (!url) {
-  console.error('Set LEDGER_URL=https://your-app.up.railway.app');
+  console.error('Set LDGR_URL=https://your-app.up.railway.app');
   process.exit(1);
 }
 

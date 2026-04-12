@@ -11,6 +11,22 @@ const { getSnapshotPath } = require('./paths');
 
 const app = express();
 
+// ── Policy pages (public — no auth required) ──────────────────────────────────
+function policyPage(title, filePath) {
+  return (req, res) => {
+    const text = fs.readFileSync(filePath, 'utf8');
+    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title} — LDGR</title>
+<style>body{font-family:Georgia,serif;max-width:680px;margin:60px auto;padding:0 24px;color:#1C1A14;line-height:1.7;background:#FAF7F0}h1{font-size:18px;margin-bottom:32px}p{color:#3A3528;font-size:14px;margin:0 0 16px}a{color:#1C3F6E}</style>
+</head><body><h1>${title}</h1>${text.split('\n').filter(Boolean).map(l => `<p>${l}</p>`).join('')}</body></html>`);
+  };
+}
+
+app.get('/privacy', policyPage('Privacy Policy',
+  path.join(__dirname, '..', 'PRIVACY.md')));
+
+app.get('/data-retention', policyPage('Data Retention Policy',
+  path.join(__dirname, '..', 'DATA-RETENTION.md')));
+
 // ── Basic Auth ────────────────────────────────────────────────────────────────
 // Username field is ignored — only the password is checked.
 app.use((req, res, next) => {
