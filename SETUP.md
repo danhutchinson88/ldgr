@@ -55,7 +55,7 @@ If `SNAPSHOT_PATH` is omitted, the app uses `data/snapshot.json`.
 Start the linker:
 
 ```bash
-node link-server.js
+npm run link
 ```
 
 Then open:

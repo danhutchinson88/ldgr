@@ -21,6 +21,26 @@ function policyPage(title, filePath) {
   };
 }
 
+app.get('/about', (req, res) => {
+  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>About — LDGR</title>
+<style>body{font-family:Georgia,serif;max-width:600px;margin:60px auto;padding:0 24px;color:#1C1A14;line-height:1.7;background:#FAF7F0}h1{font-size:20px;margin-bottom:8px}p{color:#3A3528;font-size:14px;margin:0 0 14px}a{color:#1C3F6E}ul{color:#3A3528;font-size:14px;padding-left:20px}li{margin-bottom:4px}.label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6B6454;margin:24px 0 6px}</style>
+</head><body>
+  <h1>LDGR</h1>
+  <p>A personal finance dashboard. Single-user, password-protected.</p>
+  <p class="label">Data Access</p>
+  <p>Retrieves account balances, transactions, and investment holdings from linked financial institutions via the Plaid API.</p>
+  <p class="label">Policies</p>
+  <ul>
+    <li><a href="/privacy">Privacy Policy</a></li>
+    <li><a href="/data-retention">Data Retention Policy</a></li>
+  </ul>
+  <p class="label">Source</p>
+  <p><a href="https://github.com/danhutchinson88/ldgr">github.com/danhutchinson88/ldgr</a></p>
+  <p class="label">Contact</p>
+  <p>Daniel Hutchinson — danhutchinson88@gmail.com</p>
+</body></html>`);
+});
+
 app.get('/privacy', policyPage('Privacy Policy',
   path.join(__dirname, '..', 'PRIVACY.md')));
 
