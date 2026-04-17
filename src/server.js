@@ -21,6 +21,20 @@ function policyPage(title, filePath) {
   };
 }
 
+// OAuth redirect landing — Plaid Link re-initializes itself from here after OAuth
+app.get('/oauth-return', (req, res) => {
+  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>LDGR</title>
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+</head><body><p style="font-family:Georgia,serif;padding:40px;color:#1C1A14">Completing connection...</p>
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const token  = params.get('oauth_state_id');
+  if (token) {
+    Plaid.create({ token, receivedRedirectUri: window.location.href, onSuccess: () => {}, onExit: () => {} }).open();
+  }
+</script></body></html>`);
+});
+
 app.get('/about', (req, res) => {
   res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>About — LDGR</title>
 <style>body{font-family:Georgia,serif;max-width:600px;margin:60px auto;padding:0 24px;color:#1C1A14;line-height:1.7;background:#FAF7F0}h1{font-size:20px;margin-bottom:8px}p{color:#3A3528;font-size:14px;margin:0 0 14px}a{color:#1C3F6E}ul{color:#3A3528;font-size:14px;padding-left:20px}li{margin-bottom:4px}.label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6B6454;margin:24px 0 6px}</style>

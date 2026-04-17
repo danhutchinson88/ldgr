@@ -29,6 +29,7 @@ app.post("/api/create-link-token", async (req, res) => {
       products:      [Products.Transactions, Products.Investments],
       country_codes: [CountryCode.Us],
       language:      "en",
+      redirect_uri:  "https://ldgr.up.railway.app/oauth-return",
     });
     res.json({ link_token: data.link_token });
   } catch (e) {
