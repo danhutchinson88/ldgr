@@ -273,26 +273,32 @@ async function runSync() {
   const tokens       = getTokens();
   const snapshotPath = getSnapshotPath();
 
-  // Balances — all four institutions in parallel
-  const [amexAccounts, chaseAccounts, fidelityAccounts, gsAccounts] = await Promise.all([
-    fetchBalances('amex',         tokens.amex),
-    fetchBalances('chase',        tokens.chase),
-    fetchBalances('fidelity',     tokens.fidelity),
-    fetchBalances('goldmanSachs', tokens.goldmanSachs),
-  ]);
+  // Balances + transactions — only for institutions with tokens
+  const INSTITUTIONS = [
+    { key: 'amex',         label: 'amex',         holdings: false },
+    { key: 'chase',        label: 'chase',        holdings: false },
+    { key: 'fidelity',     label: 'fidelity',     holdings: true  },
+    { key: 'goldmanSachs', label: 'goldmanSachs', holdings: false },
+  ].filter(i => tokens[i.key]);
 
-  // Transactions — all four (savings accounts needed for income detection)
-  // Holdings  — Fidelity only (investment accounts)
-  const [amexTx, chaseTx, fidelityTx, gsTx, holdings] = await Promise.all([
-    fetchTransactions('amex',         tokens.amex),
-    fetchTransactions('chase',        tokens.chase),
-    fetchTransactions('fidelity',     tokens.fidelity),
-    fetchTransactions('goldmanSachs', tokens.goldmanSachs),
-    fetchHoldings('fidelity',         tokens.fidelity),
-  ]);
+  console.log(`[sync] institutions: ${INSTITUTIONS.map(i => i.label).join(', ')}`);
 
-  const allTx    = [...amexTx, ...chaseTx, ...fidelityTx, ...gsTx];
-  const accounts = [...amexAccounts, ...chaseAccounts, ...fidelityAccounts, ...gsAccounts];
+  const results = await Promise.all(
+    INSTITUTIONS.flatMap(i => [
+      fetchBalances(i.label,     tokens[i.key]),
+      fetchTransactions(i.label, tokens[i.key]),
+      i.holdings ? fetchHoldings(i.label, tokens[i.key]) : Promise.resolve([]),
+    ])
+  );
+
+  const accounts = [], allTx = [];
+  let holdings = [];
+  INSTITUTIONS.forEach((inst, idx) => {
+    const base = idx * 3;
+    accounts.push(...results[base]);
+    allTx.push(...results[base + 1]);
+    if (inst.holdings) holdings = results[base + 2];
+  });
 
   // Spending: positive amounts (money out), non-null categories
   const transactions = allTx

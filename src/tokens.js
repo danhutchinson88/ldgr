@@ -1,31 +1,26 @@
 'use strict';
 
-const REQUIRED_KEYS = [
-  'PLAID_TOKEN_AMEX',
-  'PLAID_TOKEN_CHASE',
-  'PLAID_TOKEN_FIDELITY',
-  'PLAID_TOKEN_GOLDMAN_SACHS',
+const ALL_KEYS = [
+  { key: 'PLAID_TOKEN_AMEX',          label: 'amex' },
+  { key: 'PLAID_TOKEN_CHASE',         label: 'chase' },
+  { key: 'PLAID_TOKEN_FIDELITY',      label: 'fidelity' },
+  { key: 'PLAID_TOKEN_GOLDMAN_SACHS', label: 'goldmanSachs' },
 ];
 
 function getTokens() {
-  let allPresent = true;
-  for (const key of REQUIRED_KEYS) {
+  const tokens = {};
+  for (const { key, label } of ALL_KEYS) {
     if (process.env[key]) {
       console.log(`✓  ${key} present`);
+      tokens[label] = process.env[key];
     } else {
-      console.log(`✗  ${key} missing — aborting`);
-      allPresent = false;
+      console.log(`–  ${key} not set, skipping`);
     }
   }
-  if (!allPresent) {
-    throw new Error('One or more Plaid tokens missing. Populate .env before running.');
+  if (Object.keys(tokens).length === 0) {
+    throw new Error('No Plaid tokens found. Populate .env before running.');
   }
-  return {
-    amex:         process.env.PLAID_TOKEN_AMEX,
-    chase:        process.env.PLAID_TOKEN_CHASE,
-    fidelity:     process.env.PLAID_TOKEN_FIDELITY,
-    goldmanSachs: process.env.PLAID_TOKEN_GOLDMAN_SACHS,
-  };
+  return tokens;
 }
 
 module.exports = { getTokens };
