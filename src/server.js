@@ -7,11 +7,16 @@ const path           = require('path');
 const cron           = require('node-cron');
 const { runSync }    = require('./sync');
 const { sendDigest } = require('./digest');
-const { getSnapshotPath } = require('./paths');
+const { getSnapshotPath }  = require('./paths');
+const { getPlaidClient }   = require('./plaid-client');
+const { Products, CountryCode } = require('plaid');
 
 const app = express();
+app.use(express.json({ limit: '2mb' }));
 
-// ── Policy pages (public — no auth required) ──────────────────────────────────
+const REDIRECT_URI = () => process.env.PLAID_REDIRECT_URI || 'https://ldgr.up.railway.app/oauth-return';
+
+// ── Policy pages (public) ─────────────────────────────────────────────────────
 function policyPage(title, filePath) {
   return (req, res) => {
     const text = fs.readFileSync(filePath, 'utf8');
@@ -20,20 +25,6 @@ function policyPage(title, filePath) {
 </head><body><h1>${title}</h1>${text.split('\n').filter(Boolean).map(l => `<p>${l}</p>`).join('')}</body></html>`);
   };
 }
-
-// OAuth redirect landing — Plaid Link re-initializes itself from here after OAuth
-app.get('/oauth-return', (req, res) => {
-  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>LDGR</title>
-<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-</head><body><p style="font-family:Georgia,serif;padding:40px;color:#1C1A14">Completing connection...</p>
-<script>
-  const params = new URLSearchParams(window.location.search);
-  const token  = params.get('oauth_state_id');
-  if (token) {
-    Plaid.create({ token, receivedRedirectUri: window.location.href, onSuccess: () => {}, onExit: () => {} }).open();
-  }
-</script></body></html>`);
-});
 
 app.get('/about', (req, res) => {
   res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>About — LDGR</title>
@@ -61,8 +52,112 @@ app.get('/privacy', policyPage('Privacy Policy',
 app.get('/data-retention', policyPage('Data Retention Policy',
   path.join(__dirname, '..', 'DATA-RETENTION.md')));
 
+// ── Plaid OAuth + linking (public — no auth required) ─────────────────────────
+// These routes are used to link institutions via Plaid Link. They are public
+// because Plaid redirects the user's browser here after OAuth. Access tokens
+// never leave the server — they are logged to Railway's deployment logs only.
+
+// OAuth return: Plaid redirects here after an OAuth-based institution login.
+// Creates a fresh link token server-side; the client re-initializes Link with it
+// plus receivedRedirectUri so Plaid can recover the OAuth session state.
+app.get('/oauth-return', async (req, res) => {
+  let linkToken = '';
+  try {
+    const plaid = getPlaidClient();
+    const { data } = await plaid.linkTokenCreate({
+      user:              { client_user_id: 'ldgr-user' },
+      client_name:       'LDGR',
+      products:          [Products.Transactions],
+      optional_products: [Products.Investments],
+      country_codes:     [CountryCode.Us],
+      language:          'en',
+      redirect_uri:      REDIRECT_URI(),
+    });
+    linkToken = data.link_token;
+  } catch (e) {
+    const msg = e.response?.data?.error_message || e.message;
+    console.error('[oauth-return] link token creation failed:', msg);
+    return res.status(500).send(`<p style="font-family:Georgia,serif;padding:40px">OAuth return failed: ${msg}</p>`);
+  }
+
+  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>LDGR — Connecting</title>
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+<style>body{font-family:Georgia,serif;background:#FAF7F0;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+p{color:#1C1A14;font-size:14px}.ok{color:#285E38}.err{color:#8B1A1A}</style>
+</head><body>
+<p id="msg">Completing institution connection…</p>
+<script>
+(function() {
+  const token = ${JSON.stringify(linkToken)};
+  const handler = Plaid.create({
+    token,
+    receivedRedirectUri: window.location.href,
+    onSuccess: function(publicToken, metadata) {
+      document.getElementById('msg').textContent = 'Exchanging token…';
+      fetch('/api/plaid/exchange-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ public_token: publicToken, institution: metadata.institution }),
+      }).then(function(r) { return r.json(); }).then(function(d) {
+        document.getElementById('msg').className = d.ok ? 'ok' : 'err';
+        document.getElementById('msg').textContent = d.ok
+          ? '✓ Connected. Check Railway logs for the access token env var.'
+          : 'Exchange failed — check Railway logs.';
+      });
+    },
+    onExit: function(err) {
+      if (err) {
+        document.getElementById('msg').className = 'err';
+        document.getElementById('msg').textContent = err.display_message || err.error_code || 'Cancelled.';
+      } else {
+        document.getElementById('msg').textContent = 'Cancelled.';
+      }
+    },
+  });
+  handler.open();
+})();
+</script></body></html>`);
+});
+
+// Exchange public_token → access_token. Logs the env var to Railway logs.
+// The token is never returned to the browser.
+app.post('/api/plaid/exchange-token', async (req, res) => {
+  const { public_token, institution } = req.body || {};
+  if (!public_token) return res.status(400).json({ ok: false, error: 'missing public_token' });
+  try {
+    const plaid = getPlaidClient();
+    const { data } = await plaid.itemPublicTokenExchange({ public_token });
+    const instId  = (institution?.institution_id || institution?.name || 'UNKNOWN').toUpperCase().replace(/\s+/g, '_');
+    console.log(`[link] connected: ${institution?.name || 'unknown'}`);
+    console.log(`[link] add to Railway env vars: PLAID_TOKEN_${instId}=${data.access_token}`);
+    res.json({ ok: true });
+  } catch (e) {
+    const msg = e.response?.data?.error_message || e.message;
+    console.error('[link] exchange failed:', msg);
+    res.status(500).json({ ok: false, error: msg });
+  }
+});
+
+// Create a link token — used by oauth-return and link-server
+app.post('/api/plaid/create-link-token', async (req, res) => {
+  try {
+    const plaid = getPlaidClient();
+    const { data } = await plaid.linkTokenCreate({
+      user:              { client_user_id: 'ldgr-user' },
+      client_name:       'LDGR',
+      products:          [Products.Transactions],
+      optional_products: [Products.Investments],
+      country_codes:     [CountryCode.Us],
+      language:          'en',
+      redirect_uri:      REDIRECT_URI(),
+    });
+    res.json({ link_token: data.link_token });
+  } catch (e) {
+    res.status(500).json({ error: e.response?.data || e.message });
+  }
+});
+
 // ── Basic Auth ────────────────────────────────────────────────────────────────
-// Username field is ignored — only the password is checked.
 app.use((req, res, next) => {
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Basic ')) {
@@ -78,7 +173,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// ── Routes ────────────────────────────────────────────────────────────────────
+// ── Protected routes ──────────────────────────────────────────────────────────
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'dashboard', 'index.html'));
 });
@@ -92,8 +187,6 @@ app.get('/snapshot', (req, res) => {
   }
 });
 
-app.use(express.json({ limit: '2mb' }));
-
 // Import a snapshot directly (used to push backloaded history to Railway)
 app.post('/snapshot/import', (req, res) => {
   try {
@@ -101,11 +194,8 @@ app.post('/snapshot/import', (req, res) => {
     const incoming = req.body;
     if (!incoming?.netWorth?.current) return res.status(400).json({ error: 'invalid snapshot' });
 
-    // Merge history: keep all unique dates, live entries win on conflict
     let existing = {};
-    try {
-      existing = JSON.parse(fs.readFileSync(snapshotPath, 'utf8'));
-    } catch (_) {}
+    try { existing = JSON.parse(fs.readFileSync(snapshotPath, 'utf8')); } catch (_) {}
 
     const merged = Object.values(
       [...(incoming.netWorth.history || []), ...(existing.netWorth?.history || [])]

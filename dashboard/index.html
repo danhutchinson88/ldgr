@@ -189,6 +189,13 @@
   .card-total .unc { color: var(--amber); }
   .card-tracking-note { font-size: 10px; color: var(--ink-faint); margin-top: 8px; font-style: italic; }
 
+  /* ── Source badges ── */
+  .source-badge { font-family: monospace; font-size: 9px; letter-spacing: 0.06em; padding: 1px 5px; border-radius: 3px; margin-left: 6px; vertical-align: middle; }
+  .source-badge.manual { background: #F5EDD9; color: var(--amber); border: 1px solid #E8D5AA; }
+
+  /* ── Sync error notice ── */
+  .sync-error-bar { background: #FBF0D9; border: 1px solid #E8C97A; border-radius: 6px; padding: 8px 12px; margin-bottom: 16px; font-size: 12px; color: var(--amber); font-family: monospace; }
+
   /* ── Empty states ── */
   .empty-state { padding: 16px 0 4px; color: var(--ink-faint); font-size: 13px; line-height: 1.5; }
 
@@ -426,8 +433,11 @@ function renderAllocStacked(allocations) {
     '<div class="alloc-legend">' + legend + '</div>';
 }
 
+const INST_NAMES = { amex: 'Amex', chase: 'Chase', fidelity: 'Fidelity', goldmanSachs: 'Goldman Sachs' };
+const instName = id => INST_NAMES[id] || id;
+
 function render(data) {
-  const { syncedAt, plaidEnv, netWorth, accounts, transactions, holdings, weekly, monthlySpend, spend30d, income, budget, cards, allocations } = data;
+  const { syncedAt, plaidEnv, netWorth, accounts, transactions, holdings, weekly, monthlySpend, spend30d, income, budget, cards, allocations, dataSources = [], syncErrors = [] } = data;
   const history   = netWorth.history || [];
   const current   = netWorth.current;
   const velocity  = netWorth.velocity;
@@ -437,8 +447,14 @@ function render(data) {
   $('status-env').textContent = isSandbox ? 'Sandbox' : 'Live';
   $('status-env').className   = 'env-badge ' + (isSandbox ? 'sandbox' : 'live');
   $('status-sync').textContent = 'Last sync ' + new Date(syncedAt).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
-  const instCount = [...new Set((accounts || []).map(a => a.institution))].length;
-  $('status-inst').textContent = instCount + ' institution' + (instCount !== 1 ? 's' : '');
+  const liveInsts   = dataSources.filter(d => d.source === 'plaid').map(d => instName(d.institution));
+  const manualInsts = dataSources.filter(d => d.source === 'manual').map(d => instName(d.institution));
+  const failedInsts = syncErrors.map(e => instName(e.institution));
+  const coverageParts = [];
+  if (liveInsts.length)   coverageParts.push(liveInsts.join(', ') + ' (live)');
+  if (manualInsts.length) coverageParts.push(manualInsts.join(', ') + ' (manual)');
+  if (failedInsts.length) coverageParts.push(failedInsts.join(', ') + ' (error)');
+  $('status-inst').textContent = coverageParts.join(' · ') || ([...new Set((accounts||[]).map(a=>a.institution))].length + ' institutions');
   $('status-strip').style.display = 'flex';
 
   // ── Header ──
@@ -473,9 +489,14 @@ function render(data) {
   }
 
   // ── Accounts ──
-  const groups  = groupAccounts(accounts);
   const groupEl = $('accounts-groups');
   groupEl.innerHTML = '';
+  if (syncErrors.length > 0) {
+    groupEl.innerHTML = '<div class="sync-error-bar">Sync error — ' +
+      syncErrors.map(e => instName(e.institution) + ': ' + e.error).join('; ') +
+      '</div>';
+  }
+  const groups  = groupAccounts(accounts);
   let hasAccounts = false;
   for (const [gName, accts] of Object.entries(groups)) {
     if (!accts.length) continue;
@@ -487,14 +508,17 @@ function render(data) {
     div.innerHTML =
       '<div class="account-group-label">' + gName + '</div>' +
       accts.map(a =>
-        '<div class="account-row"><span class="account-name">' + a.name + '</span>' +
+        '<div class="account-row"><span class="account-name">' + a.name +
+        (a.source === 'manual' ? '<span class="source-badge manual">manual</span>' : '') +
+        '</span>' +
         '<span class="account-bal' + (isLiab ? ' neg' : '') + '">' + (isLiab ? '−' : '') + fmt(a.balance) + '</span></div>'
       ).join('') +
       '<div class="group-total"><span>Total</span><span>' + (isLiab ? '−' : '') + fmt(total) + '</span></div>';
     groupEl.appendChild(div);
   }
   if (!hasAccounts) {
-    groupEl.innerHTML = '<div class="empty-state">No account data yet. Run a sync to connect your institutions.</div>';
+    const existing = groupEl.innerHTML;
+    groupEl.innerHTML = existing + '<div class="empty-state">No account data yet. Run a sync to connect your institutions.</div>';
   }
 
   // ── Cash Flow ──
@@ -575,21 +599,23 @@ function render(data) {
       hold.map(h => {
         const cls     = TICKER_MAP[h.ticker] || 'Other';
         const portPct = portfolioTotal > 0 ? ((h.value / portfolioTotal) * 100).toFixed(1) : '0.0';
-        return '<tr><td><span class="h-ticker">' + h.ticker + '</span><span class="h-name">' + (h.name || '') + '</span></td>' +
+        return '<tr><td><span class="h-ticker">' + h.ticker +
+          (h.source === 'manual' ? '<span class="source-badge manual">manual</span>' : '') +
+          '</span><span class="h-name">' + (h.name || '') + '</span></td>' +
           '<td>' + (h.shares < 10 ? h.shares.toFixed(3) : Math.round(h.shares).toLocaleString()) + '</td>' +
           '<td class="r">$' + (h.price || 0).toFixed(2) + '</td>' +
           '<td class="r">' + fmt(h.value) + '</td>' +
           '<td class="r"><span class="h-class">' + portPct + '% ' + cls + '</span></td></tr>';
       }).join('') + '</tbody></table>';
   } else {
-    $('holdings-table-wrap').innerHTML = '<div class="empty-state">No holdings data yet. Investment holdings from Fidelity will appear here after the next sync.</div>';
+    $('holdings-table-wrap').innerHTML = '<div class="empty-state">No holdings data. Update config/fidelity-manual.json with your Fidelity positions and re-sync.</div>';
   }
 
   // ── Allocations ──
   const hasAlloc = allocations && allocations.length > 0 && allocations.some(a => a.actual > 0);
   renderAllocStacked(hasAlloc ? allocations : []);
   if (!hasAlloc) {
-    $('allocations').innerHTML = '<div class="empty-state">Allocation data will populate once holdings are synced. Targets are configured in config/portfolio.json.</div>';
+    $('allocations').innerHTML = '<div class="empty-state">No holdings data. Portfolio allocations require holdings in config/fidelity-manual.json or a connected investment account.</div>';
   } else {
     $('allocations').innerHTML = allocations.map(a => {
       const rebalStr = a.rebalance !== undefined

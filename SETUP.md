@@ -1,18 +1,20 @@
 # LDGR Setup
 
 ## What This App Is
+
 `ldgr` is a small Node app that:
 
 - syncs balances, transactions, and holdings from Plaid
-- writes a local snapshot to `data/snapshot.json` by default
+- merges manually-maintained Fidelity data from `config/fidelity-manual.json`
+- writes a snapshot to `data/snapshot.json` (or `SNAPSHOT_PATH`)
 - serves a protected dashboard from `src/server.js`
 - optionally sends a weekly digest email
 
 ## Prerequisites
 
 - Node.js 18+
-- a Plaid app with `Transactions` and `Investments` enabled
-- a `.env` file in the repo root
+- A Plaid app with `Transactions` and `Investments` enabled (production access)
+- A `.env` file in the repo root
 
 ## Install
 
@@ -22,17 +24,16 @@ npm install
 
 ## Create `.env`
 
-Use this as a starting point:
-
 ```env
 PLAID_CLIENT_ID=
 PLAID_SECRET=
-PLAID_ENV=sandbox
+PLAID_ENV=production
 
-PLAID_TOKEN_AMEX=
-PLAID_TOKEN_CHASE=
-PLAID_TOKEN_FIDELITY=
-PLAID_TOKEN_GOLDMAN_SACHS=
+PLAID_TOKEN_GOLDMAN_SACHS=    # connected
+# PLAID_TOKEN_AMEX=           # pending OAuth review
+# PLAID_TOKEN_CHASE=          # pending OAuth review
+
+PLAID_REDIRECT_URI=https://ldgr.up.railway.app/oauth-return
 
 DASHBOARD_PASSWORD=
 PORT=3000
@@ -46,58 +47,67 @@ Optional:
 
 ```env
 SNAPSHOT_PATH=/absolute/path/to/snapshot.json
+LDGR_URL=https://ldgr.up.railway.app   # only needed for push-snapshot.js
 ```
 
-If `SNAPSHOT_PATH` is omitted, the app uses `data/snapshot.json`.
+## Institution Status
 
-## Link Accounts
+| Institution | Status | Notes |
+|---|---|---|
+| Goldman Sachs (Marcus) | Connected | Savings account |
+| American Express | Pending | OAuth review in progress with Plaid |
+| Chase | Pending | OAuth review in progress with Plaid |
+| Fidelity | Not supported | Use `config/fidelity-manual.json` instead |
 
-Start the linker:
+## Fidelity Manual Data
 
-```bash
-npm run link
-```
+Since Fidelity is not supported for this Plaid app, account balances and holdings
+are entered manually in `config/fidelity-manual.json`. Edit the values there and
+re-run sync. Manually-entered accounts and holdings are marked "manual" in the
+dashboard.
 
-Then open:
+## Link Accounts (OAuth flow)
 
-```text
-http://localhost:3001
-```
+For OAuth institutions (Amex, Chase), when Plaid production access is granted:
 
-Each successful connection prints an env var you can paste into `.env`, for example:
+1. Start the link server:
+   ```bash
+   npm run link
+   ```
+2. Open `http://localhost:3001`
+3. Select the institution and click Connect
+4. Plaid will redirect your browser to `PLAID_REDIRECT_URI` (Railway) to complete the OAuth
+5. The access token is logged to Railway's deployment logs
+6. Copy the token from Railway logs to your `.env` and Railway env vars
 
-```env
-PLAID_TOKEN_AMEX=access-...
-```
+For non-OAuth institutions (Goldman Sachs), the token prints in the local terminal.
 
-## Run A Sync
+## Run a Sync
 
 ```bash
 npm run sync
 ```
 
-That writes the latest snapshot to `data/snapshot.json` unless you override `SNAPSHOT_PATH`.
+Writes the latest snapshot to `data/snapshot.json`. The dashboard shows which
+institutions succeeded, failed, or are manually sourced.
 
-## Run The Dashboard
+## Run the Dashboard
 
 ```bash
 npm start
 ```
 
-Then open:
-
-```text
-http://localhost:3000
-```
-
-The dashboard is protected with HTTP Basic Auth and uses `DASHBOARD_PASSWORD`.
+Open `http://localhost:3000`. Protected with HTTP Basic Auth using `DASHBOARD_PASSWORD`.
 
 ## Weekly Digest
 
-If you want email digests, set:
+Set `EMAIL_FROM`, `EMAIL_APP_PASSWORD`, and `EMAIL_TO`. The digest fires automatically
+every Sunday at 8am ET via the server's cron schedule.
 
-- `EMAIL_FROM`
-- `EMAIL_APP_PASSWORD`
-- `EMAIL_TO`
+## Push Local Snapshot to Railway
 
-The digest is sent by the scheduled server job after a successful weekly sync.
+After running `scripts/backload.js` to seed historical NW data:
+
+```bash
+LDGR_URL=https://ldgr.up.railway.app node scripts/push-snapshot.js
+```

@@ -1,0 +1,20 @@
+{
+  "_instructions": "Manually maintained Fidelity data. Fidelity is not supported via Plaid for this app. Edit balances and holdings here and run npm run sync to update the snapshot. Use the same ticker symbols as config/portfolio.json.",
+  "accounts": [
+    {
+      "name": "Fidelity 401k",
+      "type": "investment",
+      "subtype": "401k",
+      "balance": 0
+    }
+  ],
+  "holdings": [
+    {
+      "ticker": "FZROX",
+      "name": "Fidelity ZERO Total Market Index",
+      "shares": 0,
+      "price": 0,
+      "value": 0
+    }
+  ]
+}

@@ -3,19 +3,9 @@
 require('dotenv').config();
 const fs   = require('fs');
 const path = require('path');
-const { PlaidApi, PlaidEnvironments, Configuration } = require('plaid');
-const { getTokens } = require('./tokens');
-const { getSnapshotPath } = require('./paths');
-
-const plaid = new PlaidApi(new Configuration({
-  basePath: PlaidEnvironments[process.env.PLAID_ENV || 'sandbox'],
-  baseOptions: {
-    headers: {
-      'PLAID-CLIENT-ID': process.env.PLAID_CLIENT_ID,
-      'PLAID-SECRET':    process.env.PLAID_SECRET,
-    },
-  },
-}));
+const { getPlaidClient }   = require('./plaid-client');
+const { getTokens }        = require('./tokens');
+const { getSnapshotPath }  = require('./paths');
 
 // ── Category mapping ──────────────────────────────────────────────────────────
 const CAT_MAP = {
@@ -55,6 +45,7 @@ const mapCat = (raw) => {
 
 // ── Plaid fetchers ────────────────────────────────────────────────────────────
 async function fetchBalances(label, token) {
+  const plaid = getPlaidClient();
   const { data } = await plaid.accountsBalanceGet({ access_token: token });
   return data.accounts.map(a => ({
     institution: label,
@@ -66,6 +57,7 @@ async function fetchBalances(label, token) {
 }
 
 async function fetchTransactions(label, token, days = 45) {
+  const plaid = getPlaidClient();
   const end   = new Date().toISOString().split('T')[0];
   const start = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
   const { data } = await plaid.transactionsGet({
@@ -85,13 +77,13 @@ async function fetchTransactions(label, token, days = 45) {
       let incomeCategory = null;
       if (t.amount < 0) {
         if (primary === 'INCOME') {
-          incomeCategory = 'income';   // Plaid is confident this is income
+          incomeCategory = 'income';
         } else if (
           primary === 'TRANSFER_IN' &&
           !detailed.includes('ACCOUNT_TRANSFER') &&
           !detailed.includes('INVESTMENT_AND_RETIREMENT')
         ) {
-          incomeCategory = 'deposit';  // external deposit Plaid didn't classify as income
+          incomeCategory = 'deposit';
         }
       }
 
@@ -108,6 +100,7 @@ async function fetchTransactions(label, token, days = 45) {
 }
 
 async function fetchHoldings(label, token) {
+  const plaid = getPlaidClient();
   try {
     const { data } = await plaid.investmentsHoldingsGet({ access_token: token });
     return data.holdings.map(h => {
@@ -122,9 +115,27 @@ async function fetchHoldings(label, token) {
       };
     });
   } catch (e) {
-    console.error(`[sync] holdings error:`, e.response?.data?.error_message || e.message);
+    console.error(`[sync] holdings error for ${label}:`, e.response?.data?.error_message || e.message);
     return [];
   }
+}
+
+// ── Per-institution fetch with error isolation ────────────────────────────────
+async function syncInstitution(inst, token) {
+  const result = { label: inst.label, accounts: [], transactions: [], holdings: [], error: null };
+  try {
+    [result.accounts, result.transactions] = await Promise.all([
+      fetchBalances(inst.label, token),
+      fetchTransactions(inst.label, token),
+    ]);
+    if (inst.holdings) {
+      result.holdings = await fetchHoldings(inst.label, token);
+    }
+  } catch (e) {
+    result.error = e.response?.data?.error_message || e.message;
+    console.error(`[sync] ${inst.label} failed:`, result.error);
+  }
+  return result;
 }
 
 // ── Computations ──────────────────────────────────────────────────────────────
@@ -164,7 +175,7 @@ function computeIncome(allTransactions) {
 
   const byMonth = {};
   for (const t of incomeTx) {
-    const month = t.date.substring(0, 7); // YYYY-MM
+    const month = t.date.substring(0, 7);
     if (!byMonth[month]) byMonth[month] = { month, gross: 0, verified: 0, unverified: 0 };
     const amt = Math.abs(t.amount);
     byMonth[month].gross += amt;
@@ -273,7 +284,7 @@ async function runSync() {
   const tokens       = getTokens();
   const snapshotPath = getSnapshotPath();
 
-  // Balances + transactions — only for institutions with tokens
+  // Institutions with Plaid tokens — fetched in parallel, isolated per institution
   const INSTITUTIONS = [
     { key: 'amex',         label: 'amex',         holdings: false },
     { key: 'chase',        label: 'chase',        holdings: false },
@@ -281,24 +292,34 @@ async function runSync() {
     { key: 'goldmanSachs', label: 'goldmanSachs', holdings: false },
   ].filter(i => tokens[i.key]);
 
-  console.log(`[sync] institutions: ${INSTITUTIONS.map(i => i.label).join(', ')}`);
+  console.log(`[sync] institutions: ${INSTITUTIONS.map(i => i.label).join(', ') || 'none'}`);
 
-  const results = await Promise.all(
-    INSTITUTIONS.flatMap(i => [
-      fetchBalances(i.label,     tokens[i.key]),
-      fetchTransactions(i.label, tokens[i.key]),
-      i.holdings ? fetchHoldings(i.label, tokens[i.key]) : Promise.resolve([]),
-    ])
+  const instResults = await Promise.all(
+    INSTITUTIONS.map(i => syncInstitution(i, tokens[i.key]))
   );
 
-  const accounts = [], allTx = [];
-  let holdings = [];
-  INSTITUTIONS.forEach((inst, idx) => {
-    const base = idx * 3;
-    accounts.push(...results[base]);
-    allTx.push(...results[base + 1]);
-    if (inst.holdings) holdings = results[base + 2];
-  });
+  const syncErrors   = instResults.filter(r => r.error).map(r => ({ institution: r.label, error: r.error }));
+  const successful   = instResults.filter(r => !r.error);
+
+  const plaidAccounts     = successful.flatMap(r => r.accounts);
+  const plaidTransactions = successful.flatMap(r => r.transactions);
+  const plaidHoldings     = successful.flatMap(r => r.holdings);
+
+  // Manual Fidelity data — merged with source: 'manual'
+  let manualAccounts = [], manualHoldings = [];
+  try {
+    const manualPath = path.join(__dirname, '..', 'config', 'fidelity-manual.json');
+    const manual     = JSON.parse(fs.readFileSync(manualPath, 'utf8'));
+    const accts      = (manual.accounts || []).filter(a => a.balance > 0);
+    const holds      = (manual.holdings || []).filter(h => h.value > 0);
+    manualAccounts = accts.map(a => ({ ...a, institution: 'fidelity', source: 'manual' }));
+    manualHoldings = holds.map(h => ({ ...h, institution: 'fidelity', source: 'manual' }));
+    if (manualAccounts.length > 0) console.log(`[sync] manual fidelity: ${manualAccounts.length} accounts, ${manualHoldings.length} holdings`);
+  } catch (_) {}
+
+  const accounts = [...plaidAccounts, ...manualAccounts];
+  const holdings = [...plaidHoldings, ...manualHoldings];
+  const allTx    = plaidTransactions;
 
   // Spending: positive amounts (money out), non-null categories
   const transactions = allTx
@@ -321,13 +342,10 @@ async function runSync() {
   const label = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
   if (!isSandbox) {
-    // Production: upsert today's real NW into history
     history = [...history.filter(h => h.date !== date), { date, label, value: currentNW }]
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(-260);
   } else {
-    // Sandbox: never write fake NW to history — it would corrupt all trend metrics.
-    // Strip any same-date entry written by a prior sandbox run.
     history = history.filter(h => h.date !== date);
   }
 
@@ -352,9 +370,17 @@ async function runSync() {
   let budget = {};
   try { budget = JSON.parse(fs.readFileSync(budgetPath, 'utf8')); } catch (_) {}
 
+  // Data coverage metadata
+  const dataSources = [
+    ...successful.map(r => ({ institution: r.label, source: 'plaid' })),
+    ...(manualAccounts.length > 0 ? [{ institution: 'fidelity', source: 'manual' }] : []),
+  ];
+
   const snapshot = {
     syncedAt:    now.toISOString(),
     plaidEnv:    process.env.PLAID_ENV || 'sandbox',
+    dataSources,
+    syncErrors,
     netWorth:    { current: currentNW, history, velocity: computeVelocity(history) },
     accounts,
     transactions,
@@ -376,10 +402,11 @@ async function runSync() {
 
   console.log(`[sync] syncedAt:     ${snapshot.syncedAt}`);
   console.log(`[sync] netWorth:     $${Math.round(currentNW).toLocaleString()}`);
-  console.log(`[sync] accounts:     ${accounts.length}`);
+  console.log(`[sync] accounts:     ${accounts.length} (${plaidAccounts.length} plaid, ${manualAccounts.length} manual)`);
   console.log(`[sync] transactions: ${transactions.length}`);
-  console.log(`[sync] holdings:     ${holdings.length}`);
+  console.log(`[sync] holdings:     ${holdings.length} (${plaidHoldings.length} plaid, ${manualHoldings.length} manual)`);
   console.log(`[sync] income 30d:   $${Math.round(income.last30d).toLocaleString()}`);
+  if (syncErrors.length > 0) console.error(`[sync] errors:`, syncErrors.map(e => e.institution).join(', '));
 
   return snapshot;
 }
